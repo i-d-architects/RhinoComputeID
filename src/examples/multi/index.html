@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8">
         <link rel="icon" href="data:,">
-        <title>BranchNodeRnd.gh and rnd_node.gh</title>
+        <title>rnd_lattice.gh and rnd_node.gh</title>
         <style>
             body {
                 margin: 0;
@@ -44,7 +44,7 @@
                   <h2>Multiple files!</h2>
                   <label for="files">Choose a file:</label>
                   <select name="files" id="files">
-                    <option value="BranchNodeRnd.gh">BranchNodeRnd.gh</option>
+                    <option value="rnd_lattice.gh">rnd_lattice.gh</option>
                     <option value="rnd_node.gh">rnd_node.gh</option>
                   </select>
                 </div>
@@ -67,7 +67,7 @@
                 </div>
 <!-- /////////////////////////////////////////////////////////////////////////// -->
                 <div><button id="downloadButton" disabled>Download</button></div>
-                <div><a href="BranchNodeRnd.gh" download="BranchNodeRnd.gh.html">Save source code</a></div>
+                <div><a href="rnd_lattice.gh" download="rnd_lattice.gh.html">Save source code</a></div>
             </div>
         </div>
 
@@ -98,7 +98,7 @@ loader.setLibraryPath( 'https://unpkg.com/rhino3dm@8.0.0-beta/' )
 
 // initialise 'data' object that will be used by compute()
 const data = {
-  definition: 'BranchNodeRnd.gh',
+  definition: 'rnd_lattice.gh',
   inputs: getInputs()
 }
 
@@ -131,25 +131,28 @@ downloadButton.onclick = download
  * Gets <input> elements from html and sets handlers
  * (html is generated from the grasshopper definition)
  */
- function getInputs() {
-  return Array.from(document.getElementsByTagName('input')).reduce((inputs, input) => {
+function getInputs() {
+  const inputs = {}
+  for (const input of document.getElementsByTagName('input')) {
     switch (input.type) {
       case 'number':
+        inputs[input.id] = input.valueAsNumber
+        input.onchange = onSliderChange
+        break
       case 'range':
-        inputs[input.id] = input.valueAsNumber;
-        input.addEventListener('change', onSliderChange);
-        if (input.type === 'range') {
-          input.addEventListener('mouseup', onSliderChange);
-          input.addEventListener('touchend', onSliderChange);
-        }
-        break;
+        inputs[input.id] = input.valueAsNumber
+        input.onmouseup = onSliderChange
+        input.ontouchend = onSliderChange
+        break
       case 'checkbox':
-        inputs[input.id] = input.checked;
-        input.addEventListener('click', onSliderChange);
-        break;
+        inputs[input.id] = input.checked
+        input.onclick = onSliderChange
+        break
+      default:
+        break
     }
-    return inputs;
-  }, {});
+  }
+  return inputs
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -165,32 +168,52 @@ function onDropdownChange(event) {
 /**
  * Update "inputs" div in html and trigger re-solve
  */
- async function updateInputs() {
-  const response = await fetch('/' + data.definition);
-  const responseJson = await response.json();
+async function updateInputs() {
+  const response = await fetch('/' + data.definition)
+  // console.log(response)
+  const responseJson = await response.json()
   
-  const inputsHtml = responseJson.inputs.map(input => {
-    let html = '';
+  const inputsDiv = document.getElementById('inputs')
+  let inputsHtml = ''
+
+  // build <input> tag for input (based on code in template.js)
+  for (const input of responseJson.inputs) {
+    let html = ''
     switch (input.paramType) {
       case 'Integer':
-        html = `<input type="number" id="${input.name}" value="${input.default}">`;
+        html = `<input type="number" id="${input.name}" value="${input.default}">`
         break;
       case 'Number':
-        html = (input.minimum !== undefined && input.maximum !== undefined) 
-          ? `<input type="range" id="${input.name}" min="${input.minimum}" max="${input.maximum}" value="${input.default}" step="1">`
-          : `<input type="number" id="${input.name}" value="${input.default}">`;
-        break;
+        if (input.minimum !== undefined && input.minimum !== null
+            && input.maximum !== undefined && input.maximum !== null)
+        {
+          // use range input if min and max set
+          html = `<input type="range" id="${input.name}" min="${input.minimum}" max="${input.maximum}" value="${input.default}" step="1">`
+        } else {
+          // otherwise use number input
+          html = `<input type="number" id="${input.name}" value="${input.default}">`
+        }
+        break
       case 'Boolean':
-        html = `<input type="checkbox" id="${input.name}" ${input.default ? 'checked' : ''}>`;
-        break;
+        const checked = input.default ? 'checked' : ''
+        html = `<input type="checkbox" id="${input.name}" ${checked}>`
+        break
     }
-    return html ? `<label for="${input.name}">${input.name}</label>${html}` : '';
-  }).join('\n');
+    if (html.length > 0) {
+      // if we found an input that we can handle, add it to the collection with a label
+      inputsHtml = inputsHtml + '\n' + `<label for="${input.name}">${input.name}</label>` + '\n' + html
+    }
+  }
+  // console.log(inputsHtml)
 
-  document.getElementById('inputs').innerHTML = inputsHtml;
-  data.inputs = getInputs();
-  onSliderChange();
+  // replace inputs in html
+  inputsDiv.innerHTML = inputsHtml
+
+  // update inputs and re-solve by manually triggering a "slider change"
+  data.inputs = getInputs()
+  onSliderChange()
 }
+///////////////////////////////////////////////////////////////////////////
 
 /**
  * Sets up the scene, camera, renderer, lights and controls and starts the animation
